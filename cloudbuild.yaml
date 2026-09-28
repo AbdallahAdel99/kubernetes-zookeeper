@@ -1,0 +1,42 @@
+steps:
+  # Builds docker/Dockerfile as-is. ZKImage() in the gcp cloud-api provider expects
+  # the repo path to end in /zookeeper:<tag>. The sidecar (.../zookeeper:sidecar) is
+  # not in this repo; cloud-server builds it from zookeeper/sidecar/cloudbuild.yaml.
+  - name: gcr.io/cloud-builders/docker
+    dir: docker
+    env:
+      - _REGISTRY=$_REGISTRY
+      - _TAG=$_TAG
+      - _ZK_VERSION=$_ZK_VERSION
+    args:
+      - '-c'
+      - >-
+        docker build --build-arg ZK_VERSION=${_ZK_VERSION} --build-arg
+        ZK_DIST=apache-zookeeper-${_ZK_VERSION}-bin -t
+        ${_REGISTRY}/zookeeper:${_TAG} .
+    entrypoint: bash
+
+  - name: gcr.io/cloud-builders/docker
+    env:
+      - _REGISTRY=$_REGISTRY
+      - _TAG=$_TAG
+    args:
+      - '-c'
+      - 'docker push ${_REGISTRY}/zookeeper:${_TAG}'
+    entrypoint: bash
+
+timeout: 12000s
+
+substitutions:
+  _REGISTRY: "us.gcr.io/incorta-cloud-qa"
+  # Never reuse a tag the fleet is already running: imagePullPolicy is Always, so a
+  # re-pushed tag reaches every cluster on its next pod start with no staging window.
+  _TAG: "3.7.1-1"
+  # The ZooKeeper release the Dockerfile downloads. Keep it in step with _TAG: a
+  # mismatch is what put 3.4.10 behind a 3.7.1 tag and crashlooped the pod, since
+  # 3.4.x cannot deserialize the create2 transactions 3.7.1 writes.
+  _ZK_VERSION: "3.7.1"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
